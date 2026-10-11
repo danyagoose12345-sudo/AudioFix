@@ -3,7 +3,8 @@ name: Build and Release Geode Mod
 on:
   push:
     tags:
-      - 'v*' # Запускает сборку и авто-публикацию только когда вы создаете тег (например, v1.0.0)
+      - 'v1.0.0' # Авто-сборка при создании любого тега, начинающегося с "v" (например, v1.0.0)
+  workflow_dispatch: # Добавляет кнопку "Run workflow" для ручного запуска вкладке Actions
 
 jobs:
   build:
@@ -28,6 +29,7 @@ jobs:
           target: Windows
 
       - name: Release Artifacts
+        if: startsWith(github.ref, 'refs/tags/') # Загружает в релизы только если запуск был по тегу
         uses: softprops/action-gh-release@v2
         with:
           files: |
