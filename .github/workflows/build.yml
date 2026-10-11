@@ -1,0 +1,37 @@
+name: Build and Release Geode Mod
+
+on:
+  push:
+    tags:
+      - 'v*' # Запускает сборку и авто-публикацию только когда вы создаете тег (например, v1.0.0)
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Windows
+            os: windows-latest
+
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Mod
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: Windows
+
+      - name: Release Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/*.geode
+            build/**/*.dll
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
