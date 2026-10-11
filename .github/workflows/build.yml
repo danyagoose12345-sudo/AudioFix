@@ -3,20 +3,19 @@ name: Build and Release Geode Mod
 on:
   push:
     tags:
-      - 'v*'
+      - 'v1.0.0'
   workflow_dispatch:
 
 jobs:
   build:
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
         config:
           - name: Windows
             os: windows-latest
-
-    name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
 
     steps:
       - name: Checkout Code
@@ -25,7 +24,7 @@ jobs:
       - name: Build Mod
         uses: geode-sdk/build-geode-mod@main
         with:
-          target: Windows
+          target: Win64
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
