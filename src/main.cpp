@@ -1,37 +1,39 @@
 #include <Geode/Geode.hpp>
-#include <Geode/modify/AudioOptionsLayer.hpp> // Хукаем именно аудио-вкладку настроек
-#include <fmod.hpp> // Работаем напрямую с аудио-движком GD
+// Хукаем правильный класс аудио-настроек Geometry Dash 2.2
+#include <Geode/modify/AudioSettingsSheet.hpp> 
+#include <fmod.hpp> 
 
 using namespace geode::prelude;
 
-// Глобальные указатели на FMOD эффекты
+// Глобальный указатель на FMOD эффект
 FMOD::DSP* lowpassFilter = nullptr;
 
 // Функция для применения настроек звука
 void applyFixSettings(float volume, float bass, int ghz, bool isAudioOn) {
     auto* engine = FMODAudioEngine::sharedEngine();
-    if (!engine || !engine->m_system) return;
+    if (!engine) return;
 
+    // В Geode 3.X указатель на систему FMOD берется через m_system
     FMOD::System* sys = engine->m_system;
+    if (!sys) return;
+
     FMOD::ChannelGroup* masterGroup = nullptr;
     sys->getMasterChannelGroup(&masterGroup);
 
     if (masterGroup) {
-        // 1. Включение / Выключение и Громкость (On/Off & Volume)
+        // 1. Включение / Выключение и Громкость
         masterGroup->setMute(!isAudioOn);
         masterGroup->setVolume(volume);
 
         // 2. Изменение частоты (Ghz / Pitch)
-        // Эмулируем изменение Ghz через шаг скорости воспроизведения
         masterGroup->setPitch(static_cast<float>(ghz) / 44100.0f);
 
-        // 3. Управление Басом (Bass) через Lowpass фильтр
+        // 3. Управление Басом через Lowpass фильтр
         if (bass > 0.0f) {
             if (!lowpassFilter) {
                 sys->createDSPByType(FMOD_DSP_TYPE_LOWPASS, &lowpassFilter);
                 masterGroup->addDSP(0, lowpassFilter);
             }
-            // Чем больше баса, тем ниже частота среза (глуше и басовитее звук)
             float cutoff = 22000.0f - (bass * 2000.0f); 
             if (cutoff < 500.0f) cutoff = 500.0f;
             lowpassFilter->setParameterFloat(FMOD_DSP_LOWPASS_CUTOFF, cutoff);
@@ -43,12 +45,12 @@ void applyFixSettings(float volume, float bass, int ghz, bool isAudioOn) {
     }
 }
 
-// 1. Создаем кастомный слой для подменю "Fix"
+// 1. Создаем слой для подменю "Fix" на базе FLAlertLayer
 class AudioFixLayer : public FLAlertLayer {
 public:
     static AudioFixLayer* create() {
         auto ret = new AudioFixLayer();
-        if (ret && ret->init(240, 280, "GJ_square01.png", "Audio Fix")) {
+        if (ret && ret->init()) {
             ret->autorelease();
             return ret;
         }
@@ -56,14 +58,22 @@ public:
         return nullptr;
     }
 
-    bool init(float width, float height, const char* bg, const char* title) {
-        if (!FLAlertLayer::init(nullptr, bg, {255, 255, 255, 255}, width, height)) return false;
+    // В Geode у FLAlertLayer базовый init() не принимает кастомные размеры напрямую
+    bool init() override {
+        // Инициализируем стандартное окно alert-а
+        if (!FLAlertLayer::init(150)) return false;
 
         auto winSize = CCDirector::sharedDirector()->getWinSize();
         
+        // Создаем задний фон окна вручную нужного размера
+        auto bg = CCScale9Sprite::create("GJ_square01.png");
+        bg->setContentSize({240, 280});
+        bg->setPosition(winSize / 2);
+        m_mainLayer->addChild(bg);
+
         // Заголовок меню Fix
-        auto titleLabel = CCLabelBMFont::create(title, "goldFont.fnt");
-        titleLabel->setPosition({winSize.width / 2, winSize.height / 2 + height / 2 - 20});
+        auto titleLabel = CCLabelBMFont::create("Audio Fix", "goldFont.fnt");
+        titleLabel->setPosition({winSize.width / 2, winSize.height / 2 + 120});
         titleLabel->setScale(0.8f);
         m_mainLayer->addChild(titleLabel);
 
@@ -73,19 +83,16 @@ public:
         
         auto menu = CCMenu::create();
         menu->addChild(closeBtn);
-        menu->setPosition({winSize.width / 2 + width / 2 - 15, winSize.height / 2 + height / 2 - 15});
+        menu->setPosition({winSize.width / 2 + 105, winSize.height / 2 + 125});
         m_mainLayer->addChild(menu);
 
-        // --- ДОБАВЛЕНИЕ ЛОГИКИ ИНТЕРФЕЙСА (Volume, Bass, Ghz, On/Off) ---
-        // Для создания ползунков и чекбоксов в стиле GD 2.2 используется встроенный Geode UI.
-        // Ниже добавляем текстовые метки как пример структуры:
-        
+        // --- Интерфейс (Метки) ---
         createLabel("Volume", {winSize.width / 2 - 60, winSize.height / 2 + 40});
         createLabel("Bass", {winSize.width / 2 - 60, winSize.height / 2 + 10});
         createLabel("Ghz", {winSize.width / 2 - 60, winSize.height / 2 - 20});
         createLabel("Audio State", {winSize.width / 2 - 60, winSize.height / 2 - 50});
 
-        // Пример: Кнопки-переключатели On Audio / Off Audio
+        // Кнопка-переключатель On Audio
         auto toggleMenu = CCMenu::create();
         toggleMenu->setPosition({winSize.width / 2 + 50, winSize.height / 2 - 50});
         
@@ -93,6 +100,10 @@ public:
         auto onBtn = CCMenuItemSpriteExtra::create(onSpr, this, menu_selector(AudioFixLayer::onAudioOn));
         toggleMenu->addChild(onBtn);
         m_mainLayer->addChild(toggleMenu);
+
+        // Обязательно для работы кнопки закрытия и кликов
+        this->setTouchEnabled(true);
+        this->setKeypadEnabled(true);
 
         return true;
     }
@@ -105,7 +116,6 @@ public:
     }
 
     void onAudioOn(CCObject*) {
-        // Пример вызова функции с кастомными параметрами: Громкость 100%, Бас 5.0, Частота 44100, Включено
         applyFixSettings(1.0f, 5.0f, 44100, true);
     }
 
@@ -115,41 +125,42 @@ public:
     }
 };
 
-// 2. Хукаем оригинальное меню аудио-настроек Geometry Dash
-class $($modify(MyAudioOptionsLayer, AudioOptionsLayer)) {
+// 2. Хукаем оригинальное меню аудио-настроек Geometry Dash 2.2
+class $modify(MyAudioSettingsSheet, AudioSettingsSheet) {
     bool init() {
-        if (!AudioOptionsLayer::init()) return false;
+        if (!AudioSettingsSheet::init()) return false;
 
-        // Получаем доступ к меню кнопок внутри слоя настроек аудио
-        auto menu = this->getChildByID("main-menu");
+        // В окне AudioSettingsSheet основное меню кнопок обычно располагается в m_mainLayer
+        auto menu = typeinfo_cast<CCMenu*>(this->m_mainLayer->getChildByID("main-menu"));
         if (!menu) {
-            // Если ID не найден, ищем первый попавшийся CCMenu элемент
-            menu = typeinfo_cast<CCMenu*>(this->getChildren()->objectAtIndex(1));
+            // Запасной вариант, если ID не определен Geode
+            menu = typeinfo_cast<CCMenu*>(this->m_mainLayer->getChildren()->objectAtIndex(1));
         }
 
         if (menu) {
-            // Создаем красивую кнопку "Fix" в стиле интерфейса Робтопа
+            // Создаем кнопку "Fix"
             auto fixSprite = ButtonSprite::create("Fix", "goldFont.fnt", "GJ_button_05.png", 0.6f);
             auto fixBtn = CCMenuItemSpriteExtra::create(
                 fixSprite, 
                 this, 
-                menu_selector(MyAudioOptionsLayer::onFixPressed)
+                menu_selector(MyAudioSettingsSheet::onFixPressed)
             );
             fixBtn->setID("audio-fix-button"_spr);
 
-            // Добавляем кнопку в меню
+            // Добавляем её в интерфейс Робтопа
             menu->addChild(fixBtn);
-            menu->updateLayout(); // Обновляем сетку кнопок Geode
+            menu->updateLayout(); 
         }
 
         return true;
     }
 
-    // Обработчик нажатия на кнопку "Fix"
     void onFixPressed(CCObject*) {
         auto fixLayer = AudioFixLayer::create();
         if (fixLayer) {
-            CCDirector::sharedDirector()->getRunningScene()->addChild(fixLayer, 100);
+            // Родным методом для вызова всплывающих окон является метод .show() у FLAlertLayer
+            fixLayer->show();
         }
     }
 };
+
