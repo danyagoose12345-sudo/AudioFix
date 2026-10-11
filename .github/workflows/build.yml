@@ -3,7 +3,7 @@ name: Build and Release Geode Mod
 on:
   push:
     tags:
-      - 'v1.0.0'
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -43,3 +43,4 @@ jobs:
             build/**/*.dll
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
